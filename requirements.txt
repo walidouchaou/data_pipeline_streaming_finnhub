@@ -1,0 +1,4 @@
+python-dotenv
+finnhub-python
+avro-python3
+websocket-client
