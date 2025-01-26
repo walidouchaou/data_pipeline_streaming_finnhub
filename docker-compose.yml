@@ -12,8 +12,10 @@ services:
       - PYTHONUNBUFFERED=1
       - KAFKA_BOOTSTRAP_SERVERS=broker:29092
     depends_on:
-      - broker
-      - schema-registry
+      broker:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
     restart: always
     networks:
       - kafka-network
@@ -45,7 +47,8 @@ services:
     hostname: broker
     container_name: broker
     depends_on:
-      - zookeeper
+      zookeeper:
+        condition: service_healthy
     ports:
       - "9092:9092"
       - "9101:9101"
@@ -60,6 +63,9 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_JMX_PORT: 9101
       KAFKA_JMX_HOSTNAME: localhost
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
     networks:
       - kafka-network
     healthcheck:
@@ -73,13 +79,15 @@ services:
     hostname: schema-registry
     container_name: schema-registry
     depends_on:
-      - broker
+      broker:
+        condition: service_healthy
     ports:
       - "8081:8081"
     environment:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
       SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: 'broker:29092'
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_KAFKASTORE_CONNECTION_URL: 'zookeeper:2181'
     networks:
       - kafka-network
     healthcheck:
@@ -99,8 +107,10 @@ services:
       - KAFKA_CLUSTERS_0_ZOOKEEPER=zookeeper:2181
       - KAFKA_CLUSTERS_0_SCHEMAREGISTRY=http://schema-registry:8081
     depends_on:
-      - broker
-      - schema-registry
+      broker:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
     networks:
       - kafka-network
 
@@ -110,14 +120,25 @@ services:
       dockerfile: Dockerfile
     image: finnhub_client:latest
     command: python src/kafka_consumer.py
+    volumes:
+      - .:/app
     env_file:
       - .env
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=broker:29092
+      - PYTHONUNBUFFERED=1
     depends_on:
-      - python_app
-      - broker
-      - schema-registry
+      broker:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
     networks:
       - kafka-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "from confluent_kafka import Consumer; c=Consumer({'bootstrap.servers': 'broker:29092'}); c.close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 networks:
   kafka-network:
