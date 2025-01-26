@@ -2,3 +2,6 @@ python-dotenv
 finnhub-python
 avro-python3
 websocket-client
+confluent-kafka
+confluent-kafka[avro]
+requests

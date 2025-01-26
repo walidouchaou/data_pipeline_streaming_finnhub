@@ -1,4 +1,4 @@
-from src.finnhub_client import FinnhubClient
+from finnhub_client import FinnhubClient
 
 def main():
     client = FinnhubClient()
