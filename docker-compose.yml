@@ -170,6 +170,30 @@ services:
     extra_hosts:
       - "cassandra:172.19.0.10"
 
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - kafka-network
+    depends_on:
+      cassandra:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   spark-master:
     build:
       context: .
@@ -284,6 +308,8 @@ volumes:
     name: cassandra_market_data
   kafka_data:
     name: kafka_data
+  grafana_data:
+    name: grafana_data
 
 networks:
   kafka-network:

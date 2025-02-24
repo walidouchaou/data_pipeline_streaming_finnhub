@@ -1,6 +1,7 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import explode, current_timestamp, col
 from pyspark.sql import functions as F
+from pyspark.sql.avro.functions import from_avro
 import logging
 from datetime import datetime
 import uuid
@@ -81,7 +82,7 @@ class StreamProcessor:
                         .load())
 
             expanded_df = (trades_df
-                         .withColumn("avroData", F.from_avro(col("value"), self.trade_schema))
+                         .withColumn("avroData", from_avro(col("value"), self.trade_schema))
                          .select("avroData.*")
                          .select(explode("data"))
                          .select("col.*"))
@@ -89,7 +90,7 @@ class StreamProcessor:
             final_df = self._transform_trades(expanded_df)
 
             query = (final_df.writeStream
-                    .foreachBatch(self._write_to_cassandra)
+                    .foreachBatch(lambda df, epoch_id: self._write_to_cassandra(df, epoch_id))
                     .outputMode("append")
                     .start())
 
@@ -99,8 +100,7 @@ class StreamProcessor:
             self.logger.error(f"Erreur dans le traitement du stream: {e}")
             raise
 
-    @staticmethod
-    def _write_to_cassandra(batch_df, batch_id):
+    def _write_to_cassandra(self, batch_df, batch_id):
         (batch_df.write
          .format("org.apache.spark.sql.cassandra")
          .mode("append")
