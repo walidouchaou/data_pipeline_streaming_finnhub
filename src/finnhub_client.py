@@ -37,7 +37,7 @@ class FinnhubClient:
 
     def _initialize_state(self) -> None:
         """Initialize internal state tracking."""
-        self.active_symbols: Set[str] = set()
+        self.active_symbols: Set[str] = {'BINANCE:BTCUSDT', 'BINANCE:ETHUSDT', 'BINANCE:SOLUSDT', 'BINANCE:BNBUSDT', 'BINANCE:ADAUSDT', 'BINANCE:XRPUSDT'}
         self.is_running: bool = False
         self._symbols_lock = Lock()
 
@@ -59,89 +59,8 @@ class FinnhubClient:
         websocket.set_subscribe_callback(self._subscribe_symbols)
         return websocket
 
-    @rate_limit(max_requests=30, time_window=60)
-    def get_quote(self, symbol: str) -> Optional[Dict]:
-        """
-        Fetch quote data for a specific symbol with retry mechanism.
-        """
-        for attempt in range(3):
-            try:
-                return self.finnhub_client.quote(symbol)
-            except Exception as e:
-                if "429" in str(e) and attempt < 2:
-                    self.logger.warning(f"Rate limit reached, waiting 5 seconds...")
-                    time.sleep(5)
-                    continue
-                self.logger.error(f"Error fetching quote for {symbol}: {str(e)}")
-                return None
-        return None
+    
 
-    def get_crypto_symbols(self) -> List[str]:
-        """
-        Fetch available crypto symbols from Binance.
-        """
-        try:
-            data = self.finnhub_client.crypto_symbols('BINANCE')
-            return [str(item['symbol']) for item in data]
-        except Exception as e:
-            self.logger.error(f"Error fetching crypto symbols: {e}")
-            return []
-
-    def _validate_symbols_batch(self, symbols: List[str]) -> List[str]:
-        """
-        Validate a batch of symbols against the API.
-        
-        Args:
-            symbols: List of symbols to validate
-            
-        Returns:
-            List of valid symbols with active trading
-        """
-        valid_symbols = []
-        for symbol in symbols:
-            if not self.is_running:
-                break
-            quote = self.get_quote(symbol)
-            if quote and quote.get('c', 0) > 0:
-                valid_symbols.append(symbol)
-                self.logger.info(f"Valid symbol found: {symbol}")
-        return valid_symbols
-
-    def _symbol_validation_worker(self) -> None:
-        """Background worker for continuous symbol validation."""
-        while self.is_running:
-            try:
-                all_symbols = self.get_crypto_symbols()
-                
-                for i in range(0, len(all_symbols), self.API_BATCH_SIZE):
-                    if not self.is_running:
-                        break
-                        
-                    batch = all_symbols[i:i + self.API_BATCH_SIZE]
-                    valid_symbols = self._validate_symbols_batch(batch)
-                    
-                    self._update_active_symbols(valid_symbols)
-                    
-                    if i + self.API_BATCH_SIZE < len(all_symbols):
-                        self.logger.info(f"Waiting {self.API_WAIT_TIME}s for next batch...")
-                        time.sleep(self.API_WAIT_TIME)
-                
-            except Exception as e:
-                self.logger.error(f"Symbol validation error: {e}")
-                time.sleep(self.API_WAIT_TIME)
-
-    def _update_active_symbols(self, valid_symbols: List[str]) -> None:
-        """
-        Update the set of active symbols and their subscriptions.
-        
-        Args:
-            valid_symbols: List of newly validated symbols
-        """
-        with self._symbols_lock:
-            for symbol in valid_symbols:
-                if symbol not in self.active_symbols:
-                    self.websocket.subscribe_symbol(symbol)
-                    self.active_symbols.add(symbol)
 
     def _subscribe_symbols(self, ws) -> None:
         """Subscribe to all active symbols on WebSocket reconnection."""
@@ -158,7 +77,6 @@ class FinnhubClient:
         
         threads = [
             Thread(target=self.websocket.run, daemon=True),
-            Thread(target=self._symbol_validation_worker, daemon=True)
         ]
         
         for thread in threads:
